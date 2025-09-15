@@ -5,14 +5,23 @@ import os
 # --- Configuration ---
 INPUT_VIDEO_FILE = 'input.mp4'  # <--- CHANGE THIS to your video file
 OUTPUT_VIDEO_FILE = 'output.mp4'
-# --- New Window-Based Configuration ---
+# --- Window-Based Configuration ---
 WINDOW_SECONDS = 3.0  # Duration of the analysis window in seconds
 SLIDE_SECONDS = 1.0   # How often to slide the window forward
-# --- ADJUSTED THRESHOLD ---
-# This value was lowered. A smaller value makes the detection more sensitive
-# to smaller fluctuations in brightness. Try adjusting this if needed.
-WINDOW_VARIANCE_THRESHOLD = 0.02 # Dim if avg. frame-to-frame brightness change exceeds 2%
-DIM_FACTOR = 0.1 # Factor to apply when dimming a window (0.5 = 50% brightness)
+# --- Detection & Effect Configuration ---
+# This value makes the detection more sensitive to smaller fluctuations in brightness.
+WINDOW_VARIANCE_THRESHOLD = 0.02 # Trigger effect if avg. frame-to-frame change exceeds 2%
+
+# --- NEW: Inverse Blend Configuration ---
+# When high variance is detected, the frame will be blended with its inverse.
+# 0.0 = original frame (no effect)
+# 0.5 = 50% original, 50% inverse (makes bright/dark areas gray)
+# 1.0 = fully inverted frame
+INVERSE_BLEND_FACTOR = 0.45
+
+# This is a marker value used by the planning function to "flag" a frame.
+# It no longer directly controls brightness. Any value < 1.0 will work.
+EFFECT_FLAG_VALUE = 0.1
 
 def create_dummy_video(video_path, width=640, height=480, frames=300, fps=30.0):
     """Creates a dummy video with a high-variance (flashing) section."""
@@ -114,12 +123,13 @@ def plan_windowed_dimming(brightness_levels, fps, window_seconds, slide_seconds,
 
 def apply_effects_and_save(input_path, output_path, dim_factors):
     """
-    Applies the planned dimming effects and saves the new video.
+    Applies the planned inverse blending effect and saves the new video.
 
     Args:
         input_path (str): The path to the original video file.
         output_path (str): The path to save the processed video file.
-        dim_factors (np.ndarray): The array of dimming factors for each frame.
+        dim_factors (np.ndarray): The array of factors for each frame.
+                                  A value < 1.0 flags the frame for the effect.
     """
     print("\n--- Pass 2: Applying effects and saving video... ---")
     cap = cv2.VideoCapture(input_path)
@@ -135,15 +145,26 @@ def apply_effects_and_save(input_path, output_path, dim_factors):
         if not ret:
             break
 
+        # Check if the current frame was flagged for an effect
         factor = dim_factors[frame_index]
         
-        # If the frame was flagged for dimming, apply the effect
         if factor < 1.0:
-            # Use a robust OpenCV function to scale brightness.
-            # This is more reliable than manual numpy type casting.
-            # It calculates `frame * factor + 0` and handles data types correctly.
-            processed_frame = cv2.convertScaleAbs(frame, alpha=factor, beta=0)
+            # 1. Invert the frame's colors (e.g., black becomes white)
+            inverted_frame = cv2.bitwise_not(frame)
+            
+            # 2. Blend the original frame with its inverse.
+            # The formula is: output = frame * (1 - alpha) + inverted * alpha + 0
+            # An alpha of 0.5 results in a 50/50 mix, effectively making
+            # very bright and very dark areas move towards middle gray.
+            processed_frame = cv2.addWeighted(
+                src1=frame,
+                alpha=(1 - INVERSE_BLEND_FACTOR),
+                src2=inverted_frame,
+                beta=INVERSE_BLEND_FACTOR,
+                gamma=0
+            )
         else:
+            # No effect needed, use the original frame
             processed_frame = frame
         
         out.write(processed_frame)
@@ -170,7 +191,7 @@ def main():
     
     # Step 2: Plan the dimming effects and get the variance log
     dimming_plan, variance_data = plan_windowed_dimming(
-        brightness_data, fps, WINDOW_SECONDS, SLIDE_SECONDS, WINDOW_VARIANCE_THRESHOLD, DIM_FACTOR
+        brightness_data, fps, WINDOW_SECONDS, SLIDE_SECONDS, WINDOW_VARIANCE_THRESHOLD, EFFECT_FLAG_VALUE
     )
     
     # Print the collected variance data

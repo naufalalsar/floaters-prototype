@@ -3,24 +3,23 @@ import numpy as np
 import os
 
 # --- Configuration ---
-INPUT_VIDEO_FILE = 'input.mp4'  # <--- CHANGE THIS to your video file
-OUTPUT_VIDEO_FILE = 'output.mp4'
+INPUT_VIDEO_FILE = 'input_cyberpunk_2077.mp4'  # <--- CHANGE THIS to your video file
+OUTPUT_VIDEO_FILE = 'output_cyberpunk_2077_low_contrast.mp4'
+
 # --- Window-Based Configuration ---
 WINDOW_SECONDS = 3.0  # Duration of the analysis window in seconds
 SLIDE_SECONDS = 1.0   # How often to slide the window forward
+
 # --- Detection & Effect Configuration ---
 # This value makes the detection more sensitive to smaller fluctuations in brightness.
 WINDOW_VARIANCE_THRESHOLD = 0.02 # Trigger effect if avg. frame-to-frame change exceeds 2%
 
-# --- NEW: Inverse Blend Configuration ---
-# When high variance is detected, the frame will be blended with its inverse.
-# 0.0 = original frame (no effect)
-# 0.5 = 50% original, 50% inverse (makes bright/dark areas gray)
-# 1.0 = fully inverted frame
-INVERSE_BLEND_FACTOR = 0.45
+# --- SAFER: Contrast Reduction Configuration ---
+# A factor from 0.0 to 1.0. 
+# 0.0 = no change. 1.0 = the frame becomes solid gray.
+CONTRAST_REDUCTION_FACTOR = 0.75
 
 # This is a marker value used by the planning function to "flag" a frame.
-# It no longer directly controls brightness. Any value < 1.0 will work.
 EFFECT_FLAG_VALUE = 0.1
 
 def create_dummy_video(video_path, width=640, height=480, frames=300, fps=30.0):
@@ -123,15 +122,9 @@ def plan_windowed_dimming(brightness_levels, fps, window_seconds, slide_seconds,
 
 def apply_effects_and_save(input_path, output_path, dim_factors):
     """
-    Applies the planned inverse blending effect and saves the new video.
-
-    Args:
-        input_path (str): The path to the original video file.
-        output_path (str): The path to save the processed video file.
-        dim_factors (np.ndarray): The array of factors for each frame.
-                                  A value < 1.0 flags the frame for the effect.
+    Applies a safe contrast reduction to high-variance sections.
     """
-    print("\n--- Pass 2: Applying effects and saving video... ---")
+    print("\n--- Pass 2: Applying safe contrast reduction... ---")
     cap = cv2.VideoCapture(input_path)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -139,32 +132,31 @@ def apply_effects_and_save(input_path, output_path, dim_factors):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    # Create a neutral gray overlay. Middle gray (128) is the safest
+    # color to blend with to reduce both brightness and color contrast.
+    MIDDLE_GRAY = (128, 128, 128)
+    gray_overlay = np.full((frame_height, frame_width, 3), MIDDLE_GRAY, dtype=np.uint8)
+
     frame_index = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Check if the current frame was flagged for an effect
         factor = dim_factors[frame_index]
         
+        # If the frame was flagged, reduce its contrast by blending it with gray
         if factor < 1.0:
-            # 1. Invert the frame's colors (e.g., black becomes white)
-            inverted_frame = cv2.bitwise_not(frame)
-            
-            # 2. Blend the original frame with its inverse.
-            # The formula is: output = frame * (1 - alpha) + inverted * alpha + 0
-            # An alpha of 0.5 results in a 50/50 mix, effectively making
-            # very bright and very dark areas move towards middle gray.
+            # This formula pulls the frame's colors toward middle gray.
+            # output = frame * (1 - factor) + gray * factor
             processed_frame = cv2.addWeighted(
-                src1=frame,
-                alpha=(1 - INVERSE_BLEND_FACTOR),
-                src2=inverted_frame,
-                beta=INVERSE_BLEND_FACTOR,
-                gamma=0
+                frame, 
+                1 - CONTRAST_REDUCTION_FACTOR, 
+                gray_overlay, 
+                CONTRAST_REDUCTION_FACTOR, 
+                0
             )
         else:
-            # No effect needed, use the original frame
             processed_frame = frame
         
         out.write(processed_frame)

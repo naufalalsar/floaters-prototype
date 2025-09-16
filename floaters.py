@@ -7,8 +7,8 @@ INPUT_VIDEO_FILE = 'input_cyberpunk_2077.mp4'  # <--- CHANGE THIS to your video 
 OUTPUT_VIDEO_FILE = 'output_cyberpunk_2077_low_contrast.mp4'
 
 # --- Window-Based Configuration ---
-WINDOW_SECONDS = 3.0  # Duration of the analysis window in seconds
-SLIDE_SECONDS = 1.0   # How often to slide the window forward
+WINDOW_SECONDS = 0.5  # Duration of the analysis window in seconds
+SLIDE_SECONDS = 0.1   # How often to slide the window forward
 
 # --- Detection & Effect Configuration ---
 # This value makes the detection more sensitive to smaller fluctuations in brightness.

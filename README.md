@@ -8,4 +8,4 @@ Problem :
 - Detecting the problematic frames (Can use neural network but need a lot of data to be accurate but the data should be easy to label as the input is just a video and the output is which frame is problematic but highly unethical as we need to ask epileptic people to label it).
 - Fast flashing light (Currently thinking about either fine tune the sliding windows and windows or i just make a new condition for fast flashing light).
 
-Work's okayish on my Cyberpunk 2077 clip, Youtube Link : https://youtu.be/iRIZ3LRE7Fo
+Work's okayish on my Cyberpunk 2077 clip, Youtube Link : https://youtu.be/yZvtnZs_rvM 
